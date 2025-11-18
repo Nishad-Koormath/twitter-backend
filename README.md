@@ -15,7 +15,3 @@ This project uses Django REST Framework and mock data for demonstration purposes
 - Lightweight backend for testing, teaching, or small demos
 - Uses mock data (no database needed)
 
----
-
-## 📂 Project Structure
-
