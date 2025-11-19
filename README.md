@@ -1,68 +1,125 @@
-This repository contains the backend API for the Comment Classifier project, built as part of the Python Full Stack Developer Skill Test for Incramania Pvt Ltd.
+Backend – Twitter Comment Classifier (Django + DRF)
 
-The backend provides two REST API endpoints that deliver mock tweet comments and simulate hiding red-flag comments.
+This Django REST API fetches real replies from a real Twitter post, processes them, and exposes endpoints for the frontend application.
+Built for the Python Full Stack Developer Skill Test – Incramania Pvt Ltd.
 
-🚀 Tech Stack
-Python 3
+📌 Features
+Integrates with Twitter API v2 using Bearer Token.
+Fetches real replies using conversation_id.
+Cleans comment text by removing @username.
+Classifies comments:
+≤ 10 chars → Green Flag
+10 chars → Red Flag
+Simulates hiding red-flag comments.
+Handles rate limits (429) and timeouts.
+Supports dummy mode for testing without live Twitter API.
+
+🛠️ Tech Stack
+Pytho
 Django
 Django REST Framework
-Django CORS Headers
-Mock Data (no Twitter API required)
+Twitter API v2
+Regex preprocessing
 
-📌 Project Overview
+📡 API Endpoints
+GET /api/comments/
+Fetch real Twitter replies.
+Example Response
+{
+  "comments": [
+    { "id": "1991015917547933734", "text": "@username YOO this is fire 🔥" },
+    { "id": "1991015824417829045", "text": "@username wow" }
+  ]
+}
 
-The backend exposes two endpoints:
-Endpoint	Method	Description
-/api/comments/	GET	Returns all mock tweet comments
-/api/hide-red-flags/	POST	Returns only comments with length ≤ 10 (simulates hiding red flags)
 
-The backend does not connect to real Twitter API — comments are loaded from a local mock_data file.
-📁 Project Structure
-backend/
-│── manage.py
-│── twitter_app/
-│   ├── settings.py
-│   ├── urls.py
-│── api/
-    ├── views.py
-    ├── mock_data.py
-    ├── urls.py
+POST /api/hide-red-flags/
+Simulates hiding all red-flag comments.
 
-⚙️ Installation & Setup
-1️⃣ Create Virtual Environment
-python -m venv env
-source env/bin/activate      # Windows: env\Scripts\activate
-2️⃣ Install Dependencies
-pip install django djangorestframework django-cors-headers
-3️⃣ Run Migrations
-python manage.py migrate
-4️⃣ Start Backend Server
-python manage.py runserver
+Example Response
+{
+  "status": "success",
+  "hided_comments": [
+    { "id": "2", "text": "@username wow" }
+  ]
+}
 
-Backend runs at:
-👉 http://localhost:8000/
 
-🧠 Core API Logic
-✔ Get Comments
+📁 Core Logic (views.py)
+import requests
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.conf import settings
+import re
+
+BEARER = settings.TWITTER_BEARER
+TWEET_ID = "1991011368926130579"
+
+def twitter_headers():
+    return {"Authorization": f"Bearer {BEARER}"}
+
+
 @api_view(["GET"])
 def get_comments(request):
+
+    url = (
+        "https://api.twitter.com/2/tweets/search/recent"
+        f"?query=conversation_id:{TWEET_ID}"
+        "&max_results=50"
+        "&tweet.fields=in_reply_to_user_id,author_id,conversation_id,text"
+    )
+
+    try:
+        res = requests.get(url, headers=twitter_headers(), timeout=10)
+
+        if res.status_code == 429:
+            return Response(
+                {"error": "Rate limited by Twitter", "detail": "Try again later"},
+                status=429,
+            )
+
+        res.raise_for_status()
+        data = res.json()
+
+    except Exception as e:
+        return Response(
+            {"error": "Twitter API error", "detail": str(e)}, status=500
+        )
+
+    tweets = data.get("data", []) or []
+    comments = [{"id": t["id"], "text": t.get("text", "")} for t in tweets]
+
     return Response({"comments": comments})
 
-✔ Hide Red Flags
 @api_view(["POST"])
 def hide_red_flags(request):
-    hided_comments = [c for c in comments if len(c['text']) <= 10]
+
+    comments = request.data.get("comments", [])
+
+    safe_comments = []
+    for c in comments:
+        clean_text = re.sub(r"^@\S+\s*", "", c["text"]).strip()
+
+        if len(clean_text) <= 10:
+            safe_comments.append(c)
+
     return Response({
-        'status': 'success',
-        'hided_comments': hided_comments
+        "status": "success",
+        "hided_comments": safe_comments
     })
 
-🧠 Approach Summary
+⚙️ Setup Instructions
+1️⃣ Install Dependencies
+pip install -r requirements.txt
 
-Uses mock data since Twitter API access is restricted.
+2️⃣ Add Twitter API Token
 
-Comments are split based on length (≤10 = safe).
+In settings.py:
+TWITTER_BEARER = "YOUR_TWITTER_BEARER_TOKEN"
 
-POST endpoint simulates “Hide All Red Flags”.
+3️⃣ Run Server
+python manage.py runserver
 
-Designed to work smoothly with the React frontend.
+
+Backend will run at:
+http://localhost:8000
